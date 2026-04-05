@@ -19,7 +19,7 @@ def root():
 async def analyze_image(file: UploadFile = File(...)):
     return {
         "filename": file.filename,
-        "caption": "A person standing outdoors near a building.",
-        "translation": "Ekti manush ekti bhoboner kache baire dariye ache.",
-        "insight": "The person is standing in a natural setting with trees and sky visible."
+        "caption": "A sample caption for the uploaded image.",
+        "translation": "একটি নমুনা বর্ণনা",
+        "insight": "This is a demo response for testing purposes."
     }
