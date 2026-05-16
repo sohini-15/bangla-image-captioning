@@ -1,6 +1,7 @@
-fastapi
-uvicorn
-python-multipart
-pillow
-transformers
-torch
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+python-multipart>=0.0.6
+pillow>=10.0.0
+transformers>=4.36.0
+torch>=2.1.0
+deep-translator>=1.11.0

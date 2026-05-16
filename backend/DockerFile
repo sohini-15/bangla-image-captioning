@@ -1,0 +1,46 @@
+# ------------------------------------------------------------------
+# Bangla Image Captioning — Dockerfile for Render
+# ------------------------------------------------------------------
+# This builds a production image that:
+#   1. Installs Python dependencies (PyTorch, Transformers, etc.)
+#   2. Pre-downloads the ViT-GPT2 model at build time (faster cold starts)
+#   3. Runs the FastAPI server via uvicorn
+#
+# Deploy on Render:
+#   - Create a new Web Service
+#   - Connect your GitHub repo
+#   - Set Docker as the environment
+#   - Render auto-detects this Dockerfile
+# ------------------------------------------------------------------
+
+FROM python:3.11-slim
+
+# System deps
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Install Python deps
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Pre-download the model during build so startup is fast
+RUN python -c "\
+from transformers import ViTImageProcessor, GPT2TokenizerFast, VisionEncoderDecoderModel; \
+model_id = 'nlpconnect/vit-gpt2-image-captioning'; \
+ViTImageProcessor.from_pretrained(model_id); \
+GPT2TokenizerFast.from_pretrained(model_id); \
+VisionEncoderDecoderModel.from_pretrained(model_id); \
+print('Model cached successfully')"
+
+# Copy application code
+COPY main.py .
+
+# Render sets PORT env var; default to 8000
+ENV PORT=8000
+
+EXPOSE ${PORT}
+
+CMD uvicorn main:app --host 0.0.0.0 --port ${PORT}

@@ -23,6 +23,8 @@ export default function Home() {
     setResult(null);
 
     try {
+      //const response = await fetch("http://localhost:8000/analyze-image", {
+      //const response = await fetch("http://127.0.0.1:8000/analyze-image", {
       const response = await fetch("https://bangla-image-captioning.onrender.com/analyze-image", {
         method: "POST",
         body: formData,
