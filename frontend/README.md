@@ -1,36 +1,32 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Bangla Image Captioning — Frontend
 
-## Getting Started
+Next.js frontend for the Bangla Image Captioning pipeline. Deployed on [Vercel](https://bangla-image-captioning.vercel.app).
 
-First, run the development server:
+## What it does
+
+Users upload an image and watch the ML pipeline process it in real time. The frontend streams Server-Sent Events from the backend, displaying live progress as the image passes through each stage: ViT encoding → GPT-2 caption generation → Bangla translation. Results appear as they're generated — English caption, বাংলা translation, and a model insight.
+
+## Features
+
+- Image upload with preview
+- Live pipeline status bar showing each processing stage
+- Real-time log console streaming backend progress via SSE
+- Animated progress indicator
+- Responsive layout
+
+## Stack
+
+Next.js · React · TypeScript · Tailwind CSS · Vercel
+
+## Run locally
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Opens at [http://localhost:3000](http://localhost:3000). By default points to the production backend on HuggingFace Spaces. To use a local backend, change `API_BASE` in `app/page.tsx` to `http://localhost:8000`.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Connects to
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Backend API on HuggingFace Spaces: [sohinim-bangla-image-captioning.hf.space](https://sohinim-bangla-image-captioning.hf.space)

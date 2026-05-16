@@ -1,6 +1,6 @@
 # Bangla Image Captioning — Backend
 
-A FastAPI backend that runs a complete **ViT → GPT-2 → Bangla Translation** pipeline for image captioning.
+FastAPI backend running the full **ViT → GPT-2 → Bangla Translation** pipeline. Deployed on [HuggingFace Spaces](https://sohinim-bangla-image-captioning.hf.space).
 
 ## Architecture
 
@@ -10,9 +10,8 @@ Image Upload
     ▼
 ┌─────────────────────────────────┐
 │  ViT Encoder                    │
-│  (google/vit-base-patch16-224)  │
-│  Extracts 768-dim visual        │
-│  feature embeddings             │
+│  google/vit-base-patch16-224    │
+│  768-dim visual embeddings      │
 └───────────────┬─────────────────┘
                 │
                 ▼
@@ -25,35 +24,23 @@ Image Upload
                 ▼
 ┌─────────────────────────────────┐
 │  Google Translate API           │
-│  English → Bangla (bn)          │
-│  তারপর বাংলায় অনুবাদ           │
+│  en → bn (deep-translator)     │
 └───────────────┬─────────────────┘
                 │
                 ▼
-        JSON Response
-   { caption, translation,
-     filename, insight }
+        JSON Response or SSE Stream
 ```
 
 ## Model
 
-**nlpconnect/vit-gpt2-image-captioning** from HuggingFace
-
-- **Encoder**: Vision Transformer (ViT) — splits the image into 16×16 patches and encodes them into a sequence of 768-dimensional embeddings
-- **Decoder**: GPT-2 — uses cross-attention over the ViT embeddings to autoregressively generate an English caption
-- **Translation**: googletrans (Google Translate API wrapper) converts the English caption to Bangla
-
-Evaluated against the **BAN-Cap** dataset (Bangla captions for Flickr8k) using BLEU scores.
+**nlpconnect/vit-gpt2-image-captioning** from HuggingFace — a Vision Transformer encoder paired with a GPT-2 decoder, pretrained on image-caption pairs. Translation via `deep-translator` (Google Translate, en → bn). Evaluated against the BAN-Cap dataset using BLEU scores.
 
 ## API
 
 ### `POST /analyze-image`
 
-Upload an image file and receive captions.
+Single-response captioning. Upload a file, get back JSON.
 
-**Request**: `multipart/form-data` with a `file` field containing an image (JPG, PNG, WEBP)
-
-**Response**:
 ```json
 {
   "filename": "photo.jpg",
@@ -63,57 +50,34 @@ Upload an image file and receive captions.
 }
 ```
 
+### `POST /analyze-image-stream`
+
+Same pipeline, but streams progress via Server-Sent Events. The frontend uses this endpoint to show real-time status as each stage completes.
+
+Events: `status` (step progress), `result` (final output), `error` (if something fails).
+
 ### `GET /health`
 
-Returns model loading status and device info.
+Model loading status and device info.
 
-### `GET /`
-
-API info and pipeline description.
-
-## Run Locally
+## Run locally
 
 ```bash
-# Install dependencies
 pip install -r requirements.txt
-
-# Start the server
-uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+python -m uvicorn main:app --host 0.0.0.0 --port 8000
 ```
 
-The model downloads automatically on first startup (~1GB). Subsequent starts use the cached model.
+Model (~1GB) downloads on first run, then cached.
 
-**Test it:**
 ```bash
-curl -X POST http://localhost:8000/analyze-image \
-  -F "file=@your_image.jpg"
+# Test it
+python test_api.py path/to/image.jpg
 ```
 
-## Deploy to Render
+## Deployment
 
-1. Push this `backend/` folder to your GitHub repo
-2. Go to [render.com](https://render.com) → New → Web Service
-3. Connect your repo, set the root directory to `backend/`
-4. Environment: **Docker**
-5. Render auto-detects the `Dockerfile` and builds
-
-The Dockerfile pre-downloads the model at build time so cold starts are fast.
-
-**For GPU inference** (faster, but costs more): select a GPU instance on Render. The code auto-detects CUDA availability.
-
-**For CPU inference** (free tier): works fine, inference takes ~2-5 seconds per image.
+This backend is deployed on **HuggingFace Spaces** (Docker SDK, CPU Basic, 16GB RAM). The Dockerfile pre-downloads the model at build time for fast cold starts. Previously deployed on Render, but the free tier's 512MB limit couldn't hold the model in memory.
 
 ## Stack
 
-- **FastAPI** — async web framework
-- **PyTorch** — model inference
-- **HuggingFace Transformers** — ViT-GPT2 model loading and generation
-- **googletrans** — Google Translate API for Bangla translation
-- **Pillow** — image processing
-- **Docker** — containerized deployment
-
-## Frontend
-
-The companion frontend is a Next.js app deployed on Vercel. It sends a `POST /analyze-image` request with the uploaded file and displays the results.
-
-Frontend repo: `frontend/`
+FastAPI · PyTorch · HuggingFace Transformers · deep-translator · Pillow · Docker
