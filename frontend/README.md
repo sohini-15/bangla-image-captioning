@@ -29,4 +29,4 @@ Opens at [http://localhost:3000](http://localhost:3000). By default points to th
 
 ## Connects to
 
-Backend API on HuggingFace Spaces: [sohinim-bangla-image-captioning.hf.space](https://sohinim-bangla-image-captioning.hf.space)
+Backend API on HuggingFace Spaces: [sohinim-hf-bangla.hf.space](https://sohinim-hf-bangla.hf.space)
