@@ -10,15 +10,17 @@ Model: nlpconnect/vit-gpt2-image-captioning (HuggingFace)
 Dataset used for evaluation: BAN-Cap (Bangla captions for Flickr8k)
 
 Author: MJ
-Stack: FastAPI · PyTorch · HuggingFace Transformers · googletrans
+Stack: FastAPI · PyTorch · HuggingFace Transformers · deep-translator
 """
 
 import io
+import json
 import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from PIL import Image
 import torch
 from transformers import ViTImageProcessor, GPT2TokenizerFast, VisionEncoderDecoderModel
@@ -106,15 +108,12 @@ def generate_caption(image: Image.Image, greedy: bool = True) -> str:
       - ViT encodes the image into pixel values
       - GPT-2 decodes an English caption via cross-attention on visual tokens
     """
-    # Ensure RGB
     if image.mode != "RGB":
         image = image.convert("RGB")
 
-    # Process image through ViT
     pixel_values = image_processor(image, return_tensors="pt").pixel_values
     pixel_values = pixel_values.to(device)
 
-    # Generate caption with GPT-2 decoder
     with torch.no_grad():
         if greedy:
             generated_ids = model.generate(pixel_values, max_new_tokens=30)
@@ -133,7 +132,6 @@ def generate_caption(image: Image.Image, greedy: bool = True) -> str:
 def translate_to_bangla(text: str) -> str:
     """
     Translate English text to Bangla using Google Translate API.
-
     Replicates the `translate_to_bangla` function from the notebook.
     """
     try:
@@ -147,14 +145,11 @@ def translate_to_bangla(text: str) -> str:
 def generate_insight(caption: str) -> str:
     """
     Generate a short machine-generated insight about the image
-    based on the caption. This adds context about what the pipeline
-    detected and how it interpreted the visual content.
+    based on the caption.
     """
-    # Simple rule-based insight generation
     words = caption.lower().split()
     num_tokens = len(words)
 
-    # Detect broad categories from caption content
     animal_words = {"dog", "cat", "bird", "horse", "cow", "sheep", "elephant",
                     "bear", "zebra", "giraffe", "fish", "animal", "puppy", "kitten"}
     people_words = {"man", "woman", "boy", "girl", "person", "people", "child",
@@ -190,6 +185,15 @@ def generate_insight(caption: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# SSE helper
+# ---------------------------------------------------------------------------
+
+def sse_event(event: str, data: dict) -> str:
+    """Format a Server-Sent Event."""
+    return f"event: {event}\ndata: {json.dumps(data)}\n\n"
+
+
+# ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
 
@@ -212,17 +216,11 @@ def health():
     }
 
 
+# --- Original endpoint (backward compatible) ---
+
 @app.post("/analyze-image")
 async def analyze_image(file: UploadFile = File(...)):
-    """
-    Full captioning pipeline:
-      1. Read uploaded image
-      2. Generate English caption (ViT-GPT2)
-      3. Translate to Bangla (Google Translate)
-      4. Generate insight
-      5. Return results matching the frontend's expected schema
-    """
-    # Validate file type
+    """Full captioning pipeline — single response."""
     if not file.content_type or not file.content_type.startswith("image/"):
         raise HTTPException(
             status_code=400,
@@ -230,24 +228,14 @@ async def analyze_image(file: UploadFile = File(...)):
         )
 
     try:
-        # 1. Read image
         contents = await file.read()
         image = Image.open(io.BytesIO(contents))
         logger.info(f"Received image: {file.filename} ({image.size}, {image.mode})")
 
-        # 2. Generate English caption using ViT-GPT2
-        #    Using greedy decoding for consistent results (matching notebook default)
         caption_en = generate_caption(image, greedy=True)
-        logger.info(f"English caption: {caption_en}")
-
-        # 3. Translate to Bangla
         caption_bn = translate_to_bangla(caption_en)
-        logger.info(f"Bangla translation: {caption_bn}")
-
-        # 4. Generate insight
         insight = generate_insight(caption_en)
 
-        # 5. Return in the shape the frontend expects
         return {
             "filename": file.filename,
             "caption": caption_en,
@@ -260,6 +248,130 @@ async def analyze_image(file: UploadFile = File(...)):
         raise HTTPException(status_code=500, detail=f"Pipeline error: {str(e)}")
 
 
+# --- SSE streaming endpoint ---
+
+@app.post("/analyze-image-stream")
+async def analyze_image_stream(file: UploadFile = File(...)):
+    """
+    Full captioning pipeline with Server-Sent Events.
+    Streams real-time progress as each stage runs.
+
+    Events:
+      "status" → { step, message, progress }
+      "result" → { filename, caption, translation, insight }
+      "error"  → { message }
+    """
+    if not file.content_type or not file.content_type.startswith("image/"):
+        async def error_stream():
+            yield sse_event("error", {"message": f"Invalid file type: {file.content_type}"})
+        return StreamingResponse(error_stream(), media_type="text/event-stream")
+
+    # Read file bytes before entering the generator
+    contents = await file.read()
+    filename = file.filename
+
+    def pipeline_stream():
+        try:
+            # --- Stage 1: Image preprocessing ---
+            yield sse_event("status", {
+                "step": "upload",
+                "message": "Reading and preprocessing image...",
+                "progress": 10,
+            })
+
+            image = Image.open(io.BytesIO(contents))
+            if image.mode != "RGB":
+                image = image.convert("RGB")
+            logger.info(f"[stream] Image: {filename} ({image.size})")
+
+            yield sse_event("status", {
+                "step": "upload",
+                "message": f"Image loaded — {image.size[0]}×{image.size[1]} pixels, converted to RGB",
+                "progress": 20,
+            })
+
+            # --- Stage 2: ViT encoding ---
+            yield sse_event("status", {
+                "step": "vit",
+                "message": "Running ViT encoder — splitting image into 16×16 patches...",
+                "progress": 30,
+            })
+
+            pixel_values = image_processor(image, return_tensors="pt").pixel_values
+            pixel_values = pixel_values.to(device)
+
+            yield sse_event("status", {
+                "step": "vit",
+                "message": "ViT encoder complete — 768-dimensional visual embeddings extracted",
+                "progress": 45,
+            })
+
+            # --- Stage 3: GPT-2 caption generation ---
+            yield sse_event("status", {
+                "step": "gpt2",
+                "message": "Running GPT-2 decoder — generating English caption from visual tokens...",
+                "progress": 55,
+            })
+
+            with torch.no_grad():
+                generated_ids = model.generate(pixel_values, max_new_tokens=30)
+
+            caption_en = tokenizer.batch_decode(generated_ids, skip_special_tokens=True)[0].strip()
+            logger.info(f"[stream] Caption: {caption_en}")
+
+            yield sse_event("status", {
+                "step": "gpt2",
+                "message": f"English caption: \"{caption_en}\"",
+                "progress": 70,
+            })
+
+            # --- Stage 4: Bangla translation ---
+            yield sse_event("status", {
+                "step": "translate",
+                "message": "Translating to Bangla via Google Translate API (en → bn)...",
+                "progress": 80,
+            })
+
+            caption_bn = translate_to_bangla(caption_en)
+            logger.info(f"[stream] Translation: {caption_bn}")
+
+            yield sse_event("status", {
+                "step": "translate",
+                "message": f"বাংলা অনুবাদ: \"{caption_bn}\"",
+                "progress": 92,
+            })
+
+            # --- Stage 5: Done ---
+            insight = generate_insight(caption_en)
+
+            yield sse_event("status", {
+                "step": "done",
+                "message": "Pipeline complete ✓",
+                "progress": 100,
+            })
+
+            yield sse_event("result", {
+                "filename": filename,
+                "caption": caption_en,
+                "translation": caption_bn,
+                "insight": insight,
+            })
+
+        except Exception as e:
+            logger.error(f"[stream] Pipeline error: {e}", exc_info=True)
+            yield sse_event("error", {"message": str(e)})
+
+    return StreamingResponse(
+        pipeline_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
 # ---------------------------------------------------------------------------
-# Run with: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+# Run with: python -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 # ---------------------------------------------------------------------------
