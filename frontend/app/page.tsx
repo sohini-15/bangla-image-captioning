@@ -25,7 +25,7 @@ const PIPELINE_STEPS = [
   { id: "done", label: "Complete", icon: "✅" },
 ];
 
-const API_BASE = "https://bangla-image-captioning.onrender.com";
+const API_BASE = "https://sohinim-hf-bangla.hf.space";
 // For local dev, uncomment the line below:
 // const API_BASE = "http://localhost:8000";
 
